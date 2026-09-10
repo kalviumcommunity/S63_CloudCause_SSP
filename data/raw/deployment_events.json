@@ -1,0 +1,5 @@
+[
+  {"service": "service_A", "version": "1.0.0", "timestamp": "2023-01-01 00:30:00"},
+  {"service": "service_B", "version": "1.0.0", "timestamp": "2023-01-01 01:30:00"},
+  {"service": "service_A", "version": "1.0.1", "timestamp": "2023-01-02 00:15:00"}
+]

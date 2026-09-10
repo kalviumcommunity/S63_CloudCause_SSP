@@ -1,0 +1,4 @@
+pandas
+pandera
+streamlit
+sqlalchemy

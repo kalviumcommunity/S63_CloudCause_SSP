@@ -1,0 +1,66 @@
+name: CostTrace Data Pipeline CI
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  validate-and-run-pipeline:
+    name: Validate Data & Run Pipeline
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pytest
+
+      - name: Verify raw data files exist
+        run: |
+          echo "Checking raw data directory..."
+          ls -la data/raw/
+          test -f data/raw/billing_data.csv || (echo "Missing billing_data.csv" && exit 1)
+          test -f data/raw/deployment_events.json || (echo "Missing deployment_events.json" && exit 1)
+          test -f data/raw/usage_metrics.csv || (echo "Missing usage_metrics.csv" && exit 1)
+          echo "All raw data files present."
+
+      - name: Run data validation tests
+        run: |
+          echo "Running validation test suite..."
+          python -m pytest tests/test_data_validation.py -v --tb=short
+        env:
+          CI: "true"
+
+      - name: Execute full data pipeline
+        run: |
+          echo "Running CostTrace end-to-end pipeline..."
+          python run_pipeline.py
+        env:
+          CI: "true"
+
+      - name: Verify pipeline outputs
+        run: |
+          echo "Verifying pipeline outputs..."
+          test -f data/costtrace.db || (echo "FAIL: SQLite DB not created" && exit 1)
+          echo "SQLite database present."
+
+          echo "Checking processed data directory..."
+          ls -la data/processed/
+          test -f data/processed/billing_cleaned.csv || (echo "FAIL: billing_cleaned.csv not created" && exit 1)
+          test -f data/processed/deployments_cleaned.csv || (echo "FAIL: deployments_cleaned.csv not created" && exit 1)
+          test -f data/processed/usage_cleaned.csv || (echo "FAIL: usage_cleaned.csv not created" && exit 1)
+          echo "All processed CSV files present."
+
+          echo ""
+          echo "=== CI Pipeline Passed Successfully ==="

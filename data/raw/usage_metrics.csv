@@ -1,0 +1,6 @@
+timestamp,service,cpu_utilization,requests_per_second
+2023-01-01 00:00:00,service_A,50.2,1000
+2023-01-01 01:00:00,service_B,70.5,2500
+2023-01-01 02:00:00,service_A,55.1,1100
+2023-01-02 00:00:00,service_A,60.0,1200
+2023-01-02 01:00:00,service_C,30.0,500
