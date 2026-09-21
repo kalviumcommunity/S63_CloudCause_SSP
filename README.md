@@ -125,6 +125,24 @@ When a cost spike is investigated:
 
 ## 6. Running Locally
 
+## 7. Dataset Intake and Validation
+
+Raw source files enter through `src/ingestion/validation.py`. Keep the three
+sources independent under `data/raw/`; validation does not combine, clean, or
+move them into `data/processed/`.
+
+Expected files and schemas are:
+
+- `billing_data.csv`: `timestamp`, `service`, `cost`
+- `deployment_events.json`: an array of objects with `service`, `version`, `timestamp`
+- `usage_metrics.csv`: `timestamp`, `service`, `cpu_utilization`, `requests_per_second`
+
+Use `validate_dataset(path, source)` for one file or
+`validate_raw_datasets(raw_data_dir)` for the standard three-file intake. Each
+call returns a `ValidationResult` with `valid`, parsed `data`, and explicit
+`errors`; invalid files are never silently accepted. CSV and JSON must be
+UTF-8, non-empty, structurally valid, and contain the required data types.
+
 ### Prerequisites
 - Node.js v20+ or v22+
 - npm
