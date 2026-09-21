@@ -125,6 +125,7 @@ When a cost spike is investigated:
 
 ## 6. Running Locally
 
+
 ## 7. Date and Time Transformations
 
 Processed analytical data can be placed on one comparable timeline with
@@ -141,6 +142,25 @@ The transformation adds `date`, `hour`, `day`, `day_of_week`, `week`, `month`,
 `time_period`, and `week_period`. Billing and usage rows also receive
 `hours_since_deployment`, calculated from the latest preceding deployment for
 the same service when deployment data is supplied.
+=======
+## 7. Dataset Intake and Validation
+
+Raw source files enter through `src/ingestion/validation.py`. Keep the three
+sources independent under `data/raw/`; validation does not combine, clean, or
+move them into `data/processed/`.
+
+Expected files and schemas are:
+
+- `billing_data.csv`: `timestamp`, `service`, `cost`
+- `deployment_events.json`: an array of objects with `service`, `version`, `timestamp`
+- `usage_metrics.csv`: `timestamp`, `service`, `cpu_utilization`, `requests_per_second`
+
+Use `validate_dataset(path, source)` for one file or
+`validate_raw_datasets(raw_data_dir)` for the standard three-file intake. Each
+call returns a `ValidationResult` with `valid`, parsed `data`, and explicit
+`errors`; invalid files are never silently accepted. CSV and JSON must be
+UTF-8, non-empty, structurally valid, and contain the required data types.
+
 
 ### Prerequisites
 - Node.js v20+ or v22+
