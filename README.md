@@ -125,6 +125,24 @@ When a cost spike is investigated:
 
 ## 6. Running Locally
 
+
+## 7. Date and Time Transformations
+
+Processed analytical data can be placed on one comparable timeline with
+`src/transformations/time.py`. Use `transform_time_fields` for an individual
+processed dataframe or `transform_datasets` for the independent billing,
+deployment, and usage dataframes. Inputs are copied; raw data is never changed.
+
+Timestamps are parsed consistently and normalized to the requested timezone
+(UTC by default). Naive timestamps are interpreted in that timezone, while
+timezone-aware timestamps are converted to it. Missing or invalid timestamps
+raise `TimestampTransformationError` instead of being silently accepted.
+
+The transformation adds `date`, `hour`, `day`, `day_of_week`, `week`, `month`,
+`time_period`, and `week_period`. Billing and usage rows also receive
+`hours_since_deployment`, calculated from the latest preceding deployment for
+the same service when deployment data is supplied.
+=======
 ## 7. Dataset Intake and Validation
 
 Raw source files enter through `src/ingestion/validation.py`. Keep the three
@@ -142,6 +160,7 @@ Use `validate_dataset(path, source)` for one file or
 call returns a `ValidationResult` with `valid`, parsed `data`, and explicit
 `errors`; invalid files are never silently accepted. CSV and JSON must be
 UTF-8, non-empty, structurally valid, and contain the required data types.
+
 
 ### Prerequisites
 - Node.js v20+ or v22+
