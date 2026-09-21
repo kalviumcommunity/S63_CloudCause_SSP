@@ -1,246 +1,160 @@
-# CostTrace — Cloud Cost Attribution Platform
+# CloudCause — Cloud Cost Attribution Dashboard
 
-An end-to-end data engineering pipeline that ingests cloud billing data,
-deployment events, and usage metrics, then correlates them to surface *which
-engineering actions caused cost spikes*.
+> A clean, professional, and user-friendly web application designed for finance teams to attribute sudden cloud cost spikes to specific engineering deployments and service usage surges.
 
 ---
 
 ## 1. Problem Statement
 
-Engineering teams often see unexplained spikes in their monthly cloud bill but
-cannot easily trace the root cause:
+Cloud platforms export infrastructure billing, deployment history, and service usage metrics independently. When finance teams observe a sudden cost spike on their monthly cloud bill, they lack the tools to quickly determine:
+- **When** cloud costs increased and by how much
+- **Which** cloud service was affected
+- **Whether** a software deployment occurred around the same time
+- **Whether** compute usage, auto-scaling, or traffic surged
+- **What** the probable reason for the cost spike could be
 
-- Was it yesterday's v1.0.1 deployment that increased RDS spend?
-- Or a traffic surge brought on by a marketing campaign?
-- Or a bug that leaked orphaned compute instances?
-
-**CostTrace** combines three data sources and a simple rule-based correlation
-engine to attribute cost spikes back to their most likely cause.
-
----
-
-## 2. Pipeline Architecture
-
-The project follows a clean five-stage data flow:
-
-```
- ┌──────────────┐   ┌──────────────┐   ┌──────────────────┐   ┌──────────────┐   ┌──────────────┐
- │  INGESTION   │ → │   CLEANING   │ → │ FEATURE ENGINEER │ → │   ANALYSIS   │ → │  SQL + APP   │
- │  (Python)    │   │  (Pandas)    │   │   (Pandas/NumPy) │   │  (Correlate) │   │ (SQLite +    │
- │  CSV / JSON  │   │  Validate +  │   │ Rolling Avg +    │   │  Rule-based  │   │  Streamlit)  │
- │  + Schemas   │   │  Standardize │   │ Spike Detection  │   │  Engine      │   │              │
- └──────────────┘   └──────────────┘   └──────────────────┘   └──────────────┘   └──────────────┘
-       ↓                  ↓                    ↓                    ↓                   ↓
-  data/raw/         data/processed/      data/processed/    correlations.csv    data/costtrace.db
-                                                                                ↗            ↖
-                                                                       Streamlit       GitHub Actions
-                                                                       Dashboard          CI
-```
-
-### Technology Stack
-| Stage               | Library / Tool              | Purpose                                         |
-|---------------------|-----------------------------|-------------------------------------------------|
-| Ingestion           | Python, Pandas, **Pandera** | Schema-validated CSV / JSON loading             |
-| Cleaning            | Pandas, logging             | De-dup, fill NaNs, lowercase service names      |
-| Feature Engineering | Pandas, **NumPy**           | Rolling averages, spike flags, time-window join |
-| Analysis            | Pandas                      | Rule-based correlation engine                   |
-| Storage             | **SQLite**, SQLAlchemy      | 4 tables (cost, deployments, metrics, corrs)    |
-| Visualization       | **Streamlit**, Altair       | Interactive dashboard w/ filters + markers      |
-| CI                  | **GitHub Actions**          | Validate + run pipeline on every push           |
+**CloudCause** unites these three independent data streams into a single, intuitive dashboard with rule-based correlation to give finance and engineering teams immediate answers.
 
 ---
 
-## 3. Project Structure
+## 2. Technology Stack
+
+- **Frontend**: React 18, Tailwind CSS, Recharts (data visualizations), Lucide Icons, Vite
+- **Backend**: Node.js, Express.js
+- **Database**: SQLite (Node 22 native `DatabaseSync` - zero C++ compiler dependencies)
+- **Architecture**: Modular REST API with clean separation of concerns (Controllers, Services, Routes, Config)
+
+---
+
+## 3. Application Structure
 
 ```
 S63_CloudCause_SSP/
-├── data/
-│   ├── raw/                         # Raw input (mock CSV + JSON)
-│   │   ├── billing_data.csv
-│   │   ├── deployment_events.json
-│   │   └── usage_metrics.csv
-│   ├── processed/                   # Cleaned + featured CSVs (auto-generated)
-│   │   ├── billing_cleaned.csv
-│   │   ├── deployments_cleaned.csv
-│   │   ├── usage_cleaned.csv
-│   │   ├── combined_data_featured.csv
-│   │   └── ...
-│   └── costtrace.db                 # SQLite output database
-├── src/
-│   ├── ingestion/
-│   │   └── ingest.py                # Stage 1: Load + Pandera schema validate
-│   ├── cleaning/
-│   │   └── clean.py                 # Stage 2: Clean + save to processed/
-│   ├── feature_engineering/
-│   │   └── features.py              # Stage 3: Rolling avg, spikes, join deploys
-│   ├── analysis/
-│   │   └── correlate.py             # Stage 4: Rule-based cause attribution
-│   └── sql/
-│       └── database.py              # Stage 5: SQLite schema + queries
-├── app/
-│   └── app.py                       # Streamlit interactive dashboard
-├── tests/
-│   └── test_data_validation.py      # 20+ unittest / pytest-style tests
-├── .github/
-│   └── workflows/
-│       └── ci.yml                   # CI: validate → test → run pipeline
-├── requirements.txt                 # Python dependencies
-├── run_pipeline.py                  # Orchestrator: runs all 5 stages
-└── README.md
+├── backend/
+│   ├── src/
+│   │   ├── config/
+│   │   │   └── database.js            # SQLite database initialization & schema
+│   │   ├── controllers/
+│   │   │   ├── billingController.js   # Billing records, filters, trend aggregation
+│   │   │   ├── deploymentController.js# Release logs & spike correlation
+│   │   │   ├── usageController.js     # CPU, request count, instance metrics
+│   │   │   ├── spikeController.js     # Detected anomalies & deep dive details
+│   │   │   └── dashboardController.js # Overview summary metrics & charts
+│   │   ├── routes/                    # Express REST route definitions
+│   │   ├── services/
+│   │   │   ├── spikeDetectionService.js # Rule-based cost anomaly detection
+│   │   │   └── correlationService.js  # Cross-source attribution engine
+│   │   ├── data/
+│   │   │   └── seed.js                # 60-day realistic seed generator
+│   │   └── server.js                  # Express server & static asset host
+│   ├── database.sqlite                # SQLite database
+│   └── package.json
+│
+├── frontend/
+│   ├── src/
+│   │   ├── components/
+│   │   │   ├── common/                # StatCard, StatusBadge, FilterBar, Spinners
+│   │   │   ├── charts/                # CostTrendChart, UsageTrendChart, Breakdown
+│   │   │   └── layout/                # Sidebar, Header, Layout
+│   │   ├── pages/
+│   │   │   ├── DashboardPage.jsx      # High-level KPIs, spending trend, recent spikes
+│   │   │   ├── BillingPage.jsx        # Billing ledger, date & service filters
+│   │   │   ├── DeploymentsPage.jsx    # Deployment logs with spike correlation
+│   │   │   ├── UsagePage.jsx          # Compute utilization & instance auto-scaling
+│   │   │   ├── CostSpikesPage.jsx     # All detected cost anomalies
+│   │   │   └── CostSpikeDetailPage.jsx# Deep dive attribution investigation
+│   │   ├── services/api.js            # API client wrapper
+│   │   ├── utils/formatters.js        # Currency, percent, date utilities
+│   │   ├── App.jsx                    # Core application router
+│   │   └── main.jsx
+│   ├── tailwind.config.js
+│   ├── vite.config.js
+│   └── package.json
+│
+└── package.json                       # Root orchestration scripts
 ```
 
 ---
 
-## 4. Setup Steps
+## 4. Main Application Sections
 
-### 4.1 Prerequisites
-- Python 3.10+
-- pip
+1. **Dashboard (`/`)**:
+   - Executive KPIs: *Total Cloud Cost*, *Current Month Cost*, *MoM Cost Change %*, *Identified Cost Spikes*.
+   - Interactive 60-day spend trend chart with pulsing red anomaly markers on spike days.
+   - Spend breakdown by cloud service.
+   - Clickable **Recent Cost Spikes** table with 1-click investigation buttons.
 
-### 4.2 Install Dependencies
+2. **Billing (`/billing`)**:
+   - Detailed cloud billing ledger with *Date*, *Cloud Service*, *Cost*, *Previous Cost*, *Cost Change*, and *Status*.
+   - Filters by Cloud Service, Anomaly Status (`Normal`, `Increased`, `Cost Spike`), and Date Range.
+   - Dynamic service-specific cost trend chart.
+
+3. **Deployments (`/deployments`)**:
+   - Log of software releases with *Timestamp*, *Service*, *Version*, *Environment* (`Production` / `Staging`), *Status*, *Author*, and *Commit Message*.
+   - Visual tags highlighting releases that occurred within 48 hours prior to a cost spike.
+
+4. **Usage (`/usage`)**:
+   - Time-series tracking of *CPU Utilization (%)*, *Memory Usage (%)*, *Daily Request Volume*, and *Active Instances*.
+   - Auto-scaling peak capacity insights for finance planning.
+
+5. **Cost Spikes & Investigation Detail (`/spikes/:id`)**:
+   - The core attribution view:
+     - **Attribution Banner**: Previous spend vs spike spend with percentage jump.
+     - **Possible Explanation**: Objective, plain-English correlation synthesis.
+     - **Related Deployment**: Software version, commit notes, author, and deploy time.
+     - **Usage Metric Shifts**: Before vs After comparisons for CPU %, Instances, and Traffic.
+     - **14-Day Trajectory Chart**: Visual timeline showing cost before and after the release event.
+
+---
+
+## 5. How Cost Spike Detection & Correlation Works
+
+### Detection Rule
+A billing record is classified into one of three statuses:
+- **`Cost Spike`**: Cost increase $\ge 35\%$ **and** net dollar increase $\ge \$50$ from previous cost / baseline.
+- **`Increased`**: Cost increase $\ge 15\%$ **and** net dollar increase $\ge \$20$.
+- **`Normal`**: Cost within standard operating fluctuations.
+
+### Correlation Engine
+When a cost spike is investigated:
+1. Queries the `deployments` table for the affected service within a **48-hour attribution window** prior to the spike date.
+2. Compares `usage_metrics` on the spike day against the prior baseline to calculate shifts in CPU utilization, memory pressure, request volume, and instance count.
+3. Synthesizes a cautious, objective explanation highlighting whether the spike correlates with a code release (e.g. compute leak, thread contention), a traffic surge, or infrastructure scaling.
+
+---
+
+## 6. Running Locally
+
+### Prerequisites
+- Node.js v20+ or v22+
+- npm
+
+### Quick Start (Unified Server)
+The backend is configured to serve both the Express API and the pre-built React frontend:
+
 ```bash
-cd S63_CloudCause_SSP
-python -m venv .venv
-source .venv/bin/activate     # Windows: .venv\Scripts\activate
-pip install -r requirements.txt
+# 1. Start the server (from the root or backend folder)
+cd backend
+npm start
 ```
+Then open your browser to **http://localhost:5000**.
 
-### 4.3 Run the End-to-End Pipeline
+### Development Mode (Vite HMR + Backend Watch)
+
 ```bash
-python run_pipeline.py
-```
-This executes all 5 stages, prints a summary, and writes:
-- Cleaned + featured CSV files to `data/processed/`
-- A fully populated SQLite database to `data/costtrace.db`
+# In terminal 1: Start Backend API
+cd backend
+npm run dev
 
-### 4.4 Run Validation Tests
+# In terminal 2: Start Frontend Dev Server with HMR
+cd frontend
+npm run dev
+```
+Open **http://localhost:5173** (Vite proxies `/api` requests to port 5000).
+
+### Re-seeding Sample Data
+To reset or re-seed the SQLite database with fresh 60-day sample data:
 ```bash
-python -m pytest tests/test_data_validation.py -v
-# or:
-python tests/test_data_validation.py
+cd backend
+npm run seed
 ```
-
-### 4.5 Launch the Streamlit Dashboard
-```bash
-streamlit run app/app.py
-```
-Then open **http://localhost:8501** in your browser. You will see:
-- A cost-over-time line chart with rolling average overlay
-- Red triangle markers for deployment events
-- Purple star markers for detected cost spikes
-- A table of spikes → suspected causes (Deployment / Traffic / Unknown)
-- Sidebar filters: **Service** and **Date Range**
-
----
-
-## 5. Pipeline Stage Explanations
-
-### Stage 1 — Data Ingestion (`src/ingestion/ingest.py`)
-- Reads billing + usage from CSV, deployments from JSON
-- Every DataFrame is validated against a **Pandera** schema *before* leaving this stage
-- Fails fast if required columns are missing, types are wrong, or cost / CPU values are out of range
-
-### Stage 2 — Data Cleaning & Validation (`src/cleaning/clean.py`)
-- Drops duplicate rows
-- Fills missing `cost` values with 0 (with a WARNING log)
-- Lowercases + strips all `service` names (so `Service_A` and `service_a` match)
-- Re-validates with Pandera before returning
-- **Quality gate** in `run_pipeline.py`: fails the CI run if any dataset has > 10% missing values
-
-### Stage 3 — Feature Engineering (`src/feature_engineering/features.py`)
-Per service, ordered by time:
-1. **Rolling averages** — `rolling_avg_cost` (window = 3 periods)
-2. **Cost spike detection** — `cost_spike = True` when `cost > 1.20 × rolling_avg`
-3. **Join deployments** — using `pd.merge_asof(tolerance=60min)` so each cost row is linked to the nearest preceding deployment of the same service within a 1-hour window
-
-### Stage 4 — Correlation Analysis (`src/analysis/correlate.py`)
-A simple, transparent rule engine:
-
-| Condition                                                         | Suspected Cause               | Confidence |
-|-------------------------------------------------------------------|-------------------------------|------------|
-| Cost spike **+** deployment_version not null (within ±60 min)    | **Deployment**                | 0.80       |
-| Cost spike **+** requests_per_second > 2000 (and no deployment)  | **External Traffic Increase** | 0.70       |
-| All other cost spikes                                             | **Unknown**                   | 0.30       |
-
-Output table (`correlations` in SQLite):
-```
-spike_time           affected_service   suspected_cause               confidence_score
--------------------  -----------------  -----------------------------  ----------------
-2023-01-02 00:00:00  service_a          Deployment                     0.80
-```
-
-### Stage 5 — SQL Layer & Dashboard (`src/sql/database.py` + `app/app.py`)
-Four tables are created in `costtrace.db`:
-| Table            | Contents                                             |
-|------------------|------------------------------------------------------|
-| `cost_data`      | Cost + rolling avg + spike flag + deploy info       |
-| `deployments`    | Service, version, timestamp                          |
-| `metrics`        | CPU utilization, requests per second                 |
-| `correlations`   | Spike → cause attribution output                    |
-
-Useful pre-written queries (already used by Streamlit):
-- `query_cost_over_time(session, service=None)`
-- `query_top_cost_services(session, limit=5)`
-- `query_cost_spikes_with_causes(session, service=None)`
-- `query_deployments_by_service(session, service=None)`
-
----
-
-## 6. CI / CD — GitHub Actions
-
-File: `.github/workflows/ci.yml` — triggered on **every push / pull request**:
-
-1. Setup Python 3.11
-2. `pip install -r requirements.txt`
-3. **Verify** the three raw data files exist
-4. **Run tests** via pytest — fail on any schema / quality error
-5. **Run pipeline** via `python run_pipeline.py` — fail if:
-   - Schema breaks during ingestion
-   - Missing values exceed 10% threshold
-   - Any stage raises an exception
-6. **Verify outputs** — `costtrace.db` and all `data/processed/*.csv` exist
-
----
-
-## 7. Future Work (TODOs in Code)
-
-The codebase contains explicit `TODO:` markers marking the jump-off points for
-a production deployment:
-
-- **`src/ingestion/ingest.py`**
-  - ☁️ **Real cloud billing integration** — AWS Cost Explorer / CUR, GCP BigQuery billing export, Azure Consumption API
-  - 📡 **Real-time ingestion** — CloudWatch Events, Pub/Sub, Kinesis, budget alert webhooks
-
-- **`src/cleaning/clean.py`**
-  - 🌊 **Streaming mode** — watermarking, windowed aggregations, incremental SQLite appends
-
-Suggested concrete next steps:
-1. Add a `src/ingestion/aws.py` using `boto3` Cost Explorer API
-2. Swap `sqlite:///` for `postgres:///` or `snowflake:///` via the SQLAlchemy `get_db_engine()` helper
-3. Add CI caching for the `.venv` + Streamlit deployment to Vercel / Community Cloud
-
----
-
-## 8. Mock Data Included
-
-The repo ships with a tiny, hand-crafted mock dataset so the pipeline works
-out-of-the-box:
-
-| File                    | Rows | Notes                                      |
-|-------------------------|------|--------------------------------------------|
-| `billing_data.csv`      | 5    | service_A has a ~4× cost spike on Jan 2    |
-| `deployment_events.json`| 3    | service_A v1.0.1 deployed 15 min before spike |
-| `usage_metrics.csv`     | 5    | service_B shows high RPS (traffic cause)   |
-
-This design intentionally surfaces **both** correlation rules (Deployment +
-External Traffic) when you run the pipeline.
-
----
-
-## 9. License / Purpose
-
-Beginner-friendly reference implementation of a data engineering pipeline.
-Optimised for **clarity, not production complexity**. Every module uses
-`if __name__ == "__main__":` so you can run each stage independently while
-learning the flow.
