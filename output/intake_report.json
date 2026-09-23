@@ -1,0 +1,46 @@
+{
+    "timestamp": "2026-09-23T06:39:29.575279+00:00",
+    "filepath": "data/raw/sample.csv",
+    "validation_results": {
+        "file_exists": {
+            "passed": true,
+            "details": "File exists and is non-empty."
+        },
+        "file_format": {
+            "passed": true,
+            "extension": "csv",
+            "allowed_extensions": [
+                "csv",
+                "json",
+                "xlsx"
+            ]
+        },
+        "encoding": {
+            "encoding": "ascii",
+            "confidence": 1.0
+        },
+        "schema": {
+            "is_valid": true,
+            "expected_columns": [
+                "customer_id",
+                "customer_name",
+                "transaction_amount",
+                "transaction_date"
+            ],
+            "actual_columns": [
+                "customer_id",
+                "customer_name",
+                "transaction_amount",
+                "transaction_date"
+            ],
+            "missing_columns": [],
+            "extra_columns": []
+        }
+    },
+    "dataset_statistics": {
+        "rows": 5,
+        "columns": 4,
+        "file_size_bytes": 298,
+        "file_size_mb": 0.000284
+    }
+}
