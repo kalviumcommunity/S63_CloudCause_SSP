@@ -1,0 +1,6 @@
+spike_time,affected_service,service,cost_increase_pct,suspected_cause,confidence_score,deployment_version,current_cost,baseline_cost,root_cause_explanation
+2026-03-01 15:00:00,payment_service,payment_service,112.31,Deployment,0.85,v2.1.0,115.0,54.166666666666664,Likely deployment issue: Service deployed v2.1.0 within the preceding lookback window.
+2026-03-01 18:00:00,payment_service,payment_service,34.13,Unknown,0.35,None,112.0,83.5,Unexplained spike (Potential Orphaned Compute / Memory Leak / Idle Resource)
+2026-03-02 09:00:00,auth_service,auth_service,112.94,External Traffic/Usage Increase,0.75,None,68.0,31.933333333333334,"Traffic surge: Elevated traffic load (4800 req/s, 86.5% CPU) drove auto-scaling and spend."
+2026-03-02 13:00:00,auth_service,auth_service,32.83,External Traffic/Usage Increase,0.75,None,65.0,48.93333333333334,"Traffic surge: Elevated traffic load (4600 req/s, 82.0% CPU) drove auto-scaling and spend."
+2026-03-02 18:00:00,db_cluster,db_cluster,78.55,Unknown,0.35,None,98.5,55.166666666666664,Unexplained spike (Potential Orphaned Compute / Memory Leak / Idle Resource)

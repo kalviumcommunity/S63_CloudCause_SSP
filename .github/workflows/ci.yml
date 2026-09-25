@@ -1,14 +1,19 @@
-name: CostTrace Data Pipeline CI
+name: CostTrace Data Pipeline Automation
 
 on:
+  schedule:
+    # Run pipeline daily at midnight UTC
+    - cron: '0 0 * * *'
+  workflow_dispatch:
+    # Allows manual trigger from GitHub Actions tab
   push:
-    branches: [ main, master ]
+    branches: [ main, master, "feature/**" ]
   pull_request:
     branches: [ main, master ]
 
 jobs:
-  validate-and-run-pipeline:
-    name: Validate Data & Run Pipeline
+  run-pipeline-automation:
+    name: Execute Pipeline & Validate Attribution
     runs-on: ubuntu-latest
 
     steps:
@@ -28,39 +33,41 @@ jobs:
 
       - name: Verify raw data files exist
         run: |
-          echo "Checking raw data directory..."
+          echo "Checking raw data files..."
           ls -la data/raw/
           test -f data/raw/billing_data.csv || (echo "Missing billing_data.csv" && exit 1)
           test -f data/raw/deployment_events.json || (echo "Missing deployment_events.json" && exit 1)
           test -f data/raw/usage_metrics.csv || (echo "Missing usage_metrics.csv" && exit 1)
-          echo "All raw data files present."
+          echo "All raw datasets present."
 
       - name: Run data validation tests
         run: |
-          echo "Running validation test suite..."
-          python -m pytest tests/test_data_validation.py -v --tb=short
+          echo "Executing test suite..."
+          python -m pytest tests/ -v --tb=short
         env:
           CI: "true"
 
-      - name: Execute full data pipeline
+      - name: Execute CostTrace CLI Pipeline
         run: |
-          echo "Running CostTrace end-to-end pipeline..."
-          python run_pipeline.py
+          echo "Executing CostTrace end-to-end pipeline..."
+          python scripts/run_pipeline.py
         env:
           CI: "true"
 
       - name: Verify pipeline outputs
         run: |
-          echo "Verifying pipeline outputs..."
+          echo "Verifying generated database and outputs..."
           test -f data/costtrace.db || (echo "FAIL: SQLite DB not created" && exit 1)
-          echo "SQLite database present."
+          test -f output/spike_attribution_summary.csv || (echo "FAIL: Summary CSV missing" && exit 1)
+          test -f data/processed/billing_cleaned.csv || (echo "FAIL: billing_cleaned.csv missing" && exit 1)
+          test -f data/processed/deployments_cleaned.csv || (echo "FAIL: deployments_cleaned.csv missing" && exit 1)
+          test -f data/processed/usage_cleaned.csv || (echo "FAIL: usage_cleaned.csv missing" && exit 1)
+          echo "All pipeline outputs validated successfully."
 
-          echo "Checking processed data directory..."
-          ls -la data/processed/
-          test -f data/processed/billing_cleaned.csv || (echo "FAIL: billing_cleaned.csv not created" && exit 1)
-          test -f data/processed/deployments_cleaned.csv || (echo "FAIL: deployments_cleaned.csv not created" && exit 1)
-          test -f data/processed/usage_cleaned.csv || (echo "FAIL: usage_cleaned.csv not created" && exit 1)
-          echo "All processed CSV files present."
-
-          echo ""
-          echo "=== CI Pipeline Passed Successfully ==="
+      - name: Upload Output Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: costtrace-attribution-output
+          path: |
+            output/
+            data/costtrace.db
