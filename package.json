@@ -1,0 +1,25 @@
+{
+  "name": "cloudcause-attribution-platform",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Cloud Cost Attribution Dashboard correlating billing, deployments, and usage metrics",
+  "scripts": {
+    "dev": "node start_all.js",
+    "start": "node --experimental-sqlite backend/src/server.js",
+    "setup": "npm --prefix backend install && npm --prefix frontend install",
+    "seed": "npm --prefix backend run seed",
+    "build": "npm --prefix frontend run build"
+  },
+  "keywords": [
+    "cloud-cost",
+    "finops",
+    "attribution",
+    "dashboard",
+    "react",
+    "recharts",
+    "express",
+    "sqlite"
+  ],
+  "author": "",
+  "license": "ISC"
+}
