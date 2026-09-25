@@ -1,5 +1,5 @@
 import sqlalchemy
-from sqlalchemy import create_engine, text, inspect, Column, String, Float, DateTime, Boolean, Integer
+from sqlalchemy import create_engine, text, Column, String, Float, DateTime, Boolean, Integer
 from sqlalchemy.orm import sessionmaker, declarative_base
 import pandas as pd
 import logging
@@ -7,10 +7,8 @@ import os
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
-# Define base for declarative models
 Base = declarative_base()
 
-# Define table schemas as SQLAlchemy models
 class CostData(Base):
     __tablename__ = 'cost_data'
     id = Column(Integer, primary_key=True, autoincrement=True)
@@ -18,6 +16,7 @@ class CostData(Base):
     service = Column(String, nullable=False)
     cost = Column(Float, nullable=False)
     rolling_avg_cost = Column(Float, nullable=True)
+    cost_increase_pct = Column(Float, nullable=True)
     cost_spike = Column(Boolean, nullable=False)
     deployment_version = Column(String, nullable=True)
     deployment_timestamp = Column(DateTime, nullable=True)
@@ -37,6 +36,20 @@ class Metrics(Base):
     cpu_utilization = Column(Float, nullable=False)
     requests_per_second = Column(Integer, nullable=False)
 
+class SpikeAnalysis(Base):
+    __tablename__ = 'spike_analysis'
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    spike_time = Column(DateTime, nullable=False)
+    affected_service = Column(String, nullable=False)
+    service = Column(String, nullable=True)
+    cost_increase_pct = Column(Float, nullable=True)
+    suspected_cause = Column(String, nullable=False)
+    confidence_score = Column(Float, nullable=False)
+    deployment_version = Column(String, nullable=True)
+    current_cost = Column(Float, nullable=True)
+    baseline_cost = Column(Float, nullable=True)
+    root_cause_explanation = Column(String, nullable=True)
+
 class Correlations(Base):
     __tablename__ = 'correlations'
     id = Column(Integer, primary_key=True, autoincrement=True)
@@ -46,13 +59,11 @@ class Correlations(Base):
     confidence_score = Column(Float, nullable=False)
 
 def get_db_engine(db_path: str):
-    """Returns a SQLAlchemy engine for the SQLite database."""
-    # Ensure the directory exists
+    """Returns a SQLAlchemy engine for SQLite database."""
     db_dir = os.path.dirname(db_path)
     if db_dir and not os.path.exists(db_dir):
         os.makedirs(db_dir, exist_ok=True)
-    engine = create_engine(f'sqlite:///{db_path}')
-    return engine
+    return create_engine(f'sqlite:///{db_path}')
 
 def create_tables(engine):
     """Creates all defined tables in the database if they don't exist."""
@@ -72,108 +83,85 @@ def load_data_to_db(df: pd.DataFrame, table_name: str, engine, if_exists: str = 
 
 def get_session(engine):
     """Returns a SQLAlchemy session factory."""
-    Session = sessionmaker(bind=engine)
-    return Session
+    return sessionmaker(bind=engine)
 
-# --- Query Functions ---
+# --- Analytics Query Functions ---
 
 def query_cost_over_time(session, service: str = None) -> pd.DataFrame:
-    """Queries cost data over time, optionally filtered by service."""
-    logging.info(f"Querying cost over time for service: {service if service else 'All'}")
-    query = "SELECT timestamp, service, cost, rolling_avg_cost FROM cost_data"
+    """Queries cost trends over time, optionally filtered by service."""
+    query = "SELECT timestamp, service, cost, rolling_avg_cost, cost_increase_pct, cost_spike FROM cost_data"
     params = {}
-    if service:
+    if service and service != "All":
         query += " WHERE service = :service"
         params['service'] = service
     query += " ORDER BY timestamp"
     return pd.read_sql_query(text(query), session.bind, params=params)
 
 def query_top_cost_services(session, limit: int = 5) -> pd.DataFrame:
-    """Queries top N services by total cost."""
-    logging.info(f"Querying top {limit} services by cost.")
-    query = f"SELECT service, SUM(cost) as total_cost FROM cost_data GROUP BY service ORDER BY total_cost DESC LIMIT :limit"
+    """Queries top N services by total cost (service-wise cost)."""
+    query = """
+        SELECT service, ROUND(SUM(cost), 2) as total_cost, COUNT(*) as record_count,
+               ROUND(AVG(cost), 2) as avg_cost
+        FROM cost_data
+        GROUP BY service
+        ORDER BY total_cost DESC
+        LIMIT :limit
+    """
     return pd.read_sql_query(text(query), session.bind, params={'limit': limit})
 
 def query_cost_spikes_with_causes(session, service: str = None) -> pd.DataFrame:
-    """Queries detected cost spikes with their suspected causes."""
-    logging.info(f"Querying cost spikes with causes for service: {service if service else 'All'}")
-    query = "SELECT spike_time, affected_service, suspected_cause, confidence_score FROM correlations"
+    """Queries detected cost spikes with their suspected causes and confidence."""
+    # Check if spike_analysis table exists or fallback to correlations
+    query = """
+        SELECT spike_time, affected_service,
+               COALESCE(cost_increase_pct, 0.0) as cost_increase_pct,
+               suspected_cause, confidence_score,
+               COALESCE(deployment_version, 'None') as deployment_version,
+               COALESCE(root_cause_explanation, 'Under investigation') as root_cause_explanation
+        FROM spike_analysis
+    """
     params = {}
-    if service:
-        query += " WHERE affected_service = :service"
+    if service and service != "All":
+        query += " WHERE (affected_service = :service OR service = :service)"
         params['service'] = service
     query += " ORDER BY spike_time DESC"
-    return pd.read_sql_query(text(query), session.bind, params=params)
+    try:
+        return pd.read_sql_query(text(query), session.bind, params=params)
+    except Exception:
+        fallback_query = "SELECT spike_time, affected_service, suspected_cause, confidence_score FROM correlations"
+        if service and service != "All":
+            fallback_query += " WHERE affected_service = :service"
+        return pd.read_sql_query(text(fallback_query), session.bind, params=params)
+
+def query_spike_summary(session) -> pd.DataFrame:
+    """Queries aggregate summary of spikes by suspected cause and affected service."""
+    query = """
+        SELECT suspected_cause, COUNT(*) as spike_count,
+               ROUND(AVG(confidence_score), 2) as avg_confidence,
+               GROUP_CONCAT(DISTINCT affected_service) as affected_services
+        FROM spike_analysis
+        GROUP BY suspected_cause
+        ORDER BY spike_count DESC
+    """
+    try:
+        return pd.read_sql_query(text(query), session.bind)
+    except Exception:
+        fallback = """
+            SELECT suspected_cause, COUNT(*) as spike_count,
+                   ROUND(AVG(confidence_score), 2) as avg_confidence,
+                   GROUP_CONCAT(DISTINCT affected_service) as affected_services
+            FROM correlations
+            GROUP BY suspected_cause
+            ORDER BY spike_count DESC
+        """
+        return pd.read_sql_query(text(fallback), session.bind)
 
 def query_deployments_by_service(session, service: str = None) -> pd.DataFrame:
     """Queries deployment events, optionally filtered by service."""
-    logging.info(f"Querying deployments for service: {service if service else 'All'}")
     query = "SELECT timestamp, service, version FROM deployments"
     params = {}
-    if service:
+    if service and service != "All":
         query += " WHERE service = :service"
         params['service'] = service
     query += " ORDER BY timestamp DESC"
     return pd.read_sql_query(text(query), session.bind, params=params)
-
-
-if __name__ == "__main__":
-    # For testing the database module independently
-    import sys
-    import os
-
-    project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
-    sys.path.insert(0, project_root)
-
-    from src.ingestion.ingest import ingest_data
-    from src.cleaning.clean import clean_all_data
-    from src.feature_engineering.features import feature_engineer_data
-    from src.analysis.correlate import analyze_cost_spikes
-
-    DB_PATH = os.path.join(project_root, 'data/costtrace.db')
-    RAW_DATA_DIR = os.path.join(project_root, 'data/raw')
-
-    try:
-        engine = get_db_engine(DB_PATH)
-        create_tables(engine)
-
-        # Ingest, clean, feature engineer, and analyze data
-        raw_data = ingest_data(RAW_DATA_DIR)
-        cleaned_data = clean_all_data(raw_data)
-        featured_data = feature_engineer_data(cleaned_data)
-        correlation_results = analyze_cost_spikes(
-            featured_data['combined_data'], featured_data['usage']
-        )
-
-        # Load data into database
-        # Cost data table will take the combined_data from feature engineering
-        cost_df_to_load = featured_data['combined_data']
-        load_data_to_db(cost_df_to_load, 'cost_data', engine)
-
-        # Deployments table
-        load_data_to_db(cleaned_data['deployments'], 'deployments', engine)
-
-        # Metrics table
-        load_data_to_db(cleaned_data['usage'], 'metrics', engine)
-
-        # Correlations table
-        load_data_to_db(correlation_results, 'correlations', engine)
-
-        # Test queries
-        Session = get_session(engine)
-        with Session() as session:
-            print("\n--- Query Results ---")
-            print("\nCost over time (service_A):")
-            print(query_cost_over_time(session, 'service_a'))
-
-            print("\nTop 2 cost services:")
-            print(query_top_cost_services(session, limit=2))
-
-            print("\nCost spikes with causes:")
-            print(query_cost_spikes_with_causes(session))
-
-            print("\nDeployments for service_a:")
-            print(query_deployments_by_service(session, 'service_a'))
-
-    except Exception as e:
-        logging.error(f"Database setup and data loading failed: {e}")
